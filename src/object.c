@@ -210,8 +210,8 @@ robj *createIntsetObject(void) {
     return o;
 }
 
-robj *createHashObject(void) {
-    unsigned char *zl = ziplistNew();
+robj *createHashObjectA(alloc a) {
+    unsigned char *zl = ziplistNewA(a);
     robj *o = createObject(OBJ_HASH, zl);
     o->encoding = OBJ_ENCODING_ZIPLIST;
     return o;

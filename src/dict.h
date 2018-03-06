@@ -34,6 +34,7 @@
  */
 
 #include <stdint.h>
+#include "alloc.h"
 
 #ifndef __DICT_H
 #define __DICT_H
@@ -148,19 +149,39 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 #define dictIsRehashing(d) ((d)->rehashidx != -1)
 
 /* API */
-dict *dictCreate(dictType *type, void *privDataPtr);
-int dictExpand(dict *d, unsigned long size);
+dict *dictCreateA(dictType *type, void *privDataPtr, alloc a);
+static inline dict *dictCreate(dictType *type, void *privDataPtr) { return dictCreateA(type, privDataPtr, z_alloc); }
+static inline dict *dictCreateM(dictType *type, void *privDataPtr) { return dictCreateA(type, privDataPtr, m_alloc); }
+
+int dictExpandA(dict *d, unsigned long size, alloc a);
+static inline int dictExpand(dict *d, unsigned long size) { return dictExpandA(d, size, z_alloc); }
+static inline int dictExpandM(dict *d, unsigned long size) { return dictExpandA(d, size, m_alloc); }
+
 int dictAdd(dict *d, void *key, void *val);
 dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing);
 dictEntry *dictAddOrFind(dict *d, void *key);
 int dictReplace(dict *d, void *key, void *val);
-int dictDelete(dict *d, const void *key);
+
+int dictDeleteA(dict *d, const void *key, alloc a);
+static inline int dictDelete(dict *d, const void *key) {
+    return dictDeleteA(d, key, z_alloc);
+}
+static inline int dictDeleteM(dict *d, const void *key) {
+    return dictDeleteA(d, key, m_alloc);
+}
 dictEntry *dictUnlink(dict *ht, const void *key);
 void dictFreeUnlinkedEntry(dict *d, dictEntry *he);
 void dictRelease(dict *d);
 dictEntry * dictFind(dict *d, const void *key);
 void *dictFetchValue(dict *d, const void *key);
-int dictResize(dict *d);
+int dictResizeA(dict *d, alloc a);
+static inline int dictResize(dict *d) {
+    return dictResizeA(d, m_alloc);
+}
+static inline int dictResizeM(dict *d) {
+    return dictResizeA(d, z_alloc);
+}
+
 dictIterator *dictGetIterator(dict *d);
 dictIterator *dictGetSafeIterator(dict *d);
 dictEntry *dictNext(dictIterator *iter);
@@ -173,7 +194,14 @@ uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len);
 void dictEmpty(dict *d, void(callback)(void*));
 void dictEnableResize(void);
 void dictDisableResize(void);
-int dictRehash(dict *d, int n);
+int dictRehashA(dict *d, int n, alloc a);
+static inline int dictRehash(dict *d, int n) {
+    return dictRehashA(d, n, z_alloc);
+}
+static inline int dictRehashM(dict *d, int n) {
+    return dictRehashA(d, n, m_alloc);
+}
+
 int dictRehashMilliseconds(dict *d, int ms);
 void dictSetHashFunctionSeed(uint8_t *seed);
 uint8_t *dictGetHashFunctionSeed(void);

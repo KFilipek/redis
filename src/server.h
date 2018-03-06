@@ -1495,7 +1495,14 @@ static inline robj *createQuicklistObjectM(void) { return createQuicklistObjectA
 robj *createZiplistObject(void);
 robj *createSetObject(void);
 robj *createIntsetObject(void);
-robj *createHashObject(void);
+robj *createHashObjectA(alloc a);
+static inline robj *createHashObject() {
+    return createHashObjectA(z_alloc);
+}
+static inline robj *createHashObjectM() {
+    return createHashObjectA(m_alloc);
+}
+
 robj *createZsetObject(void);
 robj *createZsetZiplistObject(void);
 robj *createModuleObject(moduleType *mt, void *value);
@@ -1703,11 +1710,24 @@ void setTypeConvert(robj *subject, int enc);
 #define HASH_SET_TAKE_VALUE (1<<1)
 #define HASH_SET_COPY 0
 
-void hashTypeConvert(robj *o, int enc);
+void hashTypeConvertA(robj *o, int enc, alloc a);
+static inline void hashTypeConvert(robj *o, int enc) {
+    hashTypeConvertA(o, enc, z_alloc);
+}
+static inline void hashTypeConvertM(robj *o, int enc) {
+    hashTypeConvertA(o, enc, m_alloc);
+}
 void hashTypeTryConversion(robj *subject, robj **argv, int start, int end);
 void hashTypeTryObjectEncoding(robj *subject, robj **o1, robj **o2);
 int hashTypeExists(robj *o, sds key);
-int hashTypeDelete(robj *o, sds key);
+int hashTypeDeleteA(robj *o, sds key, alloc a);
+static inline int hashTypeDelete(robj *o, sds key) {
+    return hashTypeDeleteA(o, key, z_alloc);
+}
+static inline int hashTypeDeleteM(robj *o, sds key) {
+    return hashTypeDeleteA(o, key, m_alloc);
+}
+
 unsigned long hashTypeLength(const robj *o);
 hashTypeIterator *hashTypeInitIterator(robj *subject);
 void hashTypeReleaseIterator(hashTypeIterator *hi);
@@ -1721,7 +1741,14 @@ void hashTypeCurrentObject(hashTypeIterator *hi, int what, unsigned char **vstr,
 sds hashTypeCurrentObjectNewSds(hashTypeIterator *hi, int what);
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key);
 robj *hashTypeGetValueObject(robj *o, sds field);
-int hashTypeSet(robj *o, sds field, sds value, int flags);
+//int hashTypeSet(robj *o, sds field, sds value, int flags);
+int hashTypeSetA(robj *o, sds field, sds value, int flags, alloc a);
+static inline int hashTypeSet(robj *o, sds field, sds value, int flags) {
+    return hashTypeSetA(o, field, value, flags, z_alloc);
+}
+static inline int hashTypeSetM(robj *o, sds field, sds value, int flags) {
+    return hashTypeSetA(o, field, value, flags, m_alloc);
+}
 
 /* Pub / Sub */
 int pubsubUnsubscribeAllChannels(client *c, int notify);

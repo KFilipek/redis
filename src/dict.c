@@ -108,10 +108,10 @@ static void _dictReset(dictht *ht)
 }
 
 /* Create a new hash table */
-dict *dictCreate(dictType *type,
-        void *privDataPtr)
+dict *dictCreateA(dictType *type,
+        void *privDataPtr, alloc a)
 {
-    dict *d = zmalloc(sizeof(*d));
+    dict *d = a->alloc(sizeof(*d));
 
     _dictInit(d,type,privDataPtr);
     return d;
@@ -132,7 +132,7 @@ int _dictInit(dict *d, dictType *type,
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
-int dictResize(dict *d)
+int dictResizeA(dict *d, alloc a)
 {
     int minimal;
 
@@ -140,11 +140,11 @@ int dictResize(dict *d)
     minimal = d->ht[0].used;
     if (minimal < DICT_HT_INITIAL_SIZE)
         minimal = DICT_HT_INITIAL_SIZE;
-    return dictExpand(d, minimal);
+    return dictExpandA(d, minimal, a);
 }
 
 /* Expand or create the hash table */
-int dictExpand(dict *d, unsigned long size)
+int dictExpandA(dict *d, unsigned long size, alloc a)
 {
     dictht n; /* the new hash table */
     unsigned long realsize = _dictNextPower(size);
@@ -160,7 +160,7 @@ int dictExpand(dict *d, unsigned long size)
     /* Allocate the new hash table and initialize all pointers to NULL */
     n.size = realsize;
     n.sizemask = realsize-1;
-    n.table = zcalloc(realsize*sizeof(dictEntry*));
+    n.table = a->calloc(realsize*sizeof(dictEntry*));
     n.used = 0;
 
     /* Is this the first initialization? If so it's not really a rehashing
@@ -185,7 +185,7 @@ int dictExpand(dict *d, unsigned long size)
  * guaranteed that this function will rehash even a single bucket, since it
  * will visit at max N*10 empty buckets in total, otherwise the amount of
  * work it does would be unbound and the function may block for a long time. */
-int dictRehash(dict *d, int n) {
+int dictRehashA(dict *d, int n, alloc a) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
     if (!dictIsRehashing(d)) return 0;
 
@@ -219,7 +219,10 @@ int dictRehash(dict *d, int n) {
 
     /* Check if we already rehashed the whole table... */
     if (d->ht[0].used == 0) {
-        zfree(d->ht[0].table);
+        printf("LETS'S WHAT WILL HAPPEN");
+        //zfree(d->ht[0].table);
+        a->free(d->ht[0].table);
+        printf("UFFF");
         d->ht[0] = d->ht[1];
         _dictReset(&d->ht[1]);
         d->rehashidx = -1;
@@ -400,7 +403,7 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
 
 /* Remove an element, returning DICT_OK on success or DICT_ERR if the
  * element was not found. */
-int dictDelete(dict *ht, const void *key) {
+int dictDeleteA(dict *ht, const void *key, alloc a) {
     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
 }
 
@@ -920,7 +923,7 @@ static int _dictExpandIfNeeded(dict *d)
     if (dictIsRehashing(d)) return DICT_OK;
 
     /* If the hash table is empty expand it to the initial size. */
-    if (d->ht[0].size == 0) return dictExpand(d, DICT_HT_INITIAL_SIZE);
+    if (d->ht[0].size == 0) return dictExpandM(d, DICT_HT_INITIAL_SIZE);
 
     /* If we reached the 1:1 ratio, and we are allowed to resize the hash
      * table (global setting) or we should avoid it but the ratio between
@@ -930,7 +933,7 @@ static int _dictExpandIfNeeded(dict *d)
         (dict_can_resize ||
          d->ht[0].used/d->ht[0].size > dict_force_resize_ratio))
     {
-        return dictExpand(d, d->ht[0].used*2);
+        return dictExpandM(d, d->ht[0].used*2);
     }
     return DICT_OK;
 }

@@ -46,7 +46,7 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
         if (sdsEncodedObject(argv[i]) &&
             sdslen(argv[i]->ptr) > server.hash_max_ziplist_value)
         {
-            hashTypeConvert(o, OBJ_ENCODING_HT);
+            hashTypeConvertM(o, OBJ_ENCODING_HT);
             break;
         }
     }
@@ -199,7 +199,7 @@ int hashTypeExists(robj *o, sds field) {
 #define HASH_SET_TAKE_FIELD (1<<0)
 #define HASH_SET_TAKE_VALUE (1<<1)
 #define HASH_SET_COPY 0
-int hashTypeSet(robj *o, sds field, sds value, int flags) {
+int hashTypeSetA(robj *o, sds field, sds value, int flags, alloc a) {
     int update = 0;
 
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
@@ -216,20 +216,20 @@ int hashTypeSet(robj *o, sds field, sds value, int flags) {
                 update = 1;
 
                 /* Delete value */
-                zl = ziplistDelete(zl, &vptr);
+                zl = ziplistDeleteA(zl, &vptr, a);
 
                 /* Insert new value */
-                zl = ziplistInsert(zl, vptr, (unsigned char*)value,
-                        sdslen(value));
+                zl = ziplistInsertA(zl, vptr, (unsigned char*)value,
+                        sdslen(value), a);
             }
         }
 
         if (!update) {
             /* Push new field/value pair onto the tail of the ziplist */
-            zl = ziplistPush(zl, (unsigned char*)field, sdslen(field),
-                    ZIPLIST_TAIL);
-            zl = ziplistPush(zl, (unsigned char*)value, sdslen(value),
-                    ZIPLIST_TAIL);
+            zl = ziplistPushA(zl, (unsigned char*)field, sdslen(field),
+                    ZIPLIST_TAIL, a);
+            zl = ziplistPushA(zl, (unsigned char*)value, sdslen(value),
+                    ZIPLIST_TAIL, a);
         }
         o->ptr = zl;
 
@@ -276,7 +276,7 @@ int hashTypeSet(robj *o, sds field, sds value, int flags) {
 
 /* Delete an element from a hash.
  * Return 1 on deleted and 0 on not found. */
-int hashTypeDelete(robj *o, sds field) {
+int hashTypeDeleteA(robj *o, sds field, alloc a) {
     int deleted = 0;
 
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
@@ -287,18 +287,18 @@ int hashTypeDelete(robj *o, sds field) {
         if (fptr != NULL) {
             fptr = ziplistFind(fptr, (unsigned char*)field, sdslen(field), 1);
             if (fptr != NULL) {
-                zl = ziplistDelete(zl,&fptr); /* Delete the key. */
-                zl = ziplistDelete(zl,&fptr); /* Delete the value. */
+                zl = ziplistDeleteM(zl,&fptr); /* Delete the key. */
+                zl = ziplistDeleteM(zl,&fptr); /* Delete the value. */
                 o->ptr = zl;
                 deleted = 1;
             }
         }
     } else if (o->encoding == OBJ_ENCODING_HT) {
-        if (dictDelete((dict*)o->ptr, field) == C_OK) {
+        if (dictDeleteA((dict*)o->ptr, field, a) == C_OK) {
             deleted = 1;
 
             /* Always check if the dictionary needs a resize after a delete. */
-            if (htNeedsResize(o->ptr)) dictResize(o->ptr);
+            if (htNeedsResize(o->ptr)) dictResizeA(o->ptr, a);
         }
 
     } else {
@@ -449,9 +449,10 @@ sds hashTypeCurrentObjectNewSds(hashTypeIterator *hi, int what) {
 }
 
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
+    //printf("%s\n", key->ptr);
     robj *o = lookupKeyWrite(c->db,key);
     if (o == NULL) {
-        o = createHashObject();
+        o = createHashObjectM();
         dbAdd(c->db,key,o);
     } else {
         if (o->type != OBJ_HASH) {
@@ -462,7 +463,7 @@ robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
     return o;
 }
 
-void hashTypeConvertZiplist(robj *o, int enc) {
+void hashTypeConvertZiplistA(robj *o, int enc, alloc a) {
     serverAssert(o->encoding == OBJ_ENCODING_ZIPLIST);
 
     if (enc == OBJ_ENCODING_ZIPLIST) {
@@ -474,7 +475,7 @@ void hashTypeConvertZiplist(robj *o, int enc) {
         int ret;
 
         hi = hashTypeInitIterator(o);
-        dict = dictCreate(&hashDictType, NULL);
+        dict = dictCreateA(&hashDictType, NULL, a);
 
         while (hashTypeNext(hi) != C_ERR) {
             sds key, value;
@@ -489,17 +490,17 @@ void hashTypeConvertZiplist(robj *o, int enc) {
             }
         }
         hashTypeReleaseIterator(hi);
-        zfree(o->ptr);
+        //zfree(o->ptr);
+        a->free(o->ptr); // hashTypeConvertZiplist function before can be called from RDB
         o->encoding = OBJ_ENCODING_HT;
         o->ptr = dict;
     } else {
         serverPanic("Unknown hash encoding");
     }
 }
-
-void hashTypeConvert(robj *o, int enc) {
+void hashTypeConvertA(robj *o, int enc, alloc a) {
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
-        hashTypeConvertZiplist(o, enc);
+        hashTypeConvertZiplistA(o, enc, a);
     } else if (o->encoding == OBJ_ENCODING_HT) {
         serverPanic("Not implemented");
     } else {
@@ -519,7 +520,7 @@ void hsetnxCommand(client *c) {
     if (hashTypeExists(o, c->argv[2]->ptr)) {
         addReply(c, shared.czero);
     } else {
-        hashTypeSet(o,c->argv[2]->ptr,c->argv[3]->ptr,HASH_SET_COPY);
+        hashTypeSetM(o,c->argv[2]->ptr,c->argv[3]->ptr,HASH_SET_COPY);
         addReply(c, shared.cone);
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(NOTIFY_HASH,"hset",c->argv[1],c->db->id);
@@ -540,7 +541,7 @@ void hsetCommand(client *c) {
     hashTypeTryConversion(o,c->argv,2,c->argc-1);
 
     for (i = 2; i < c->argc; i += 2)
-        created += !hashTypeSet(o,c->argv[i]->ptr,c->argv[i+1]->ptr,HASH_SET_COPY);
+        created += !hashTypeSetM(o,c->argv[i]->ptr,c->argv[i+1]->ptr,HASH_SET_COPY);
 
     /* HMSET (deprecated) and HSET return value is different. */
     char *cmdname = c->argv[0]->ptr;
@@ -583,8 +584,8 @@ void hincrbyCommand(client *c) {
         return;
     }
     value += incr;
-    new = sdsfromlonglong(value);
-    hashTypeSet(o,c->argv[2]->ptr,new,HASH_SET_TAKE_VALUE);
+    new = sdsfromlonglong(value); // TODO
+    hashTypeSetM(o,c->argv[2]->ptr,new,HASH_SET_TAKE_VALUE);
     addReplyLongLong(c,value);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(NOTIFY_HASH,"hincrby",c->argv[1],c->db->id);
@@ -707,7 +708,7 @@ void hdelCommand(client *c) {
         checkType(c,o,OBJ_HASH)) return;
 
     for (j = 2; j < c->argc; j++) {
-        if (hashTypeDelete(o,c->argv[j]->ptr)) {
+        if (hashTypeDeleteM(o,c->argv[j]->ptr)) {
             deleted++;
             if (hashTypeLength(o) == 0) {
                 dbDelete(c->db,c->argv[1]);

@@ -52,7 +52,8 @@
 #define HAVE_MALLOC_SIZE 1
 #define zmalloc_size(p) je_malloc_usable_size(p)
 #else
-#error "Newer version of jemalloc required"
+//#error "Newer version of jemalloc required"
+#warning "Newer version of jemalloc required"
 #endif
 
 #elif defined(__APPLE__)
