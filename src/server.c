@@ -33,6 +33,7 @@
 #include "bio.h"
 #include "latency.h"
 #include "atomicvar.h"
+#include "memkind_malloc.h"
 
 #include <time.h>
 #include <signal.h>
@@ -4170,6 +4171,7 @@ int main(int argc, char **argv) {
             exit(1);
         } else {
             printf("memkind created\n");
+            ugly_static_solution = server.pmem_kind1;
         }
     } else {
         fprintf(stderr,"Please specify the location for memkind allocations with given size.\n");

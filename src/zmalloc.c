@@ -111,12 +111,12 @@ void *zmalloc_static(size_t size) {
 #endif
 }
 
-void * zmalloc (size_t size)
+void *zmalloc (size_t size)
 {
     fprintf(stderr,"\nzmalloc_pmem_info_wrapper");
     void* ptr = zmalloc_static(size + MEMKIND_PREFIX_SIZE);
     uint64_t *is_pmem = ptr;
-    is_pmem = 0;
+    *is_pmem = 0;
     return (char*)ptr + MEMKIND_PREFIX_SIZE;
 }
 
@@ -138,7 +138,7 @@ void zfree_no_tcache(void *ptr) {
 }
 #endif
 
-void *zcalloc(size_t size) {
+void *zcalloc_static(size_t size) {
     void *ptr = calloc(1, size+PREFIX_SIZE);
 
     if (!ptr) zmalloc_oom_handler(size);
@@ -152,7 +152,16 @@ void *zcalloc(size_t size) {
 #endif
 }
 
-void *zrealloc(void *ptr, size_t size) {
+void *zcalloc(size_t size) {
+    fprintf(stderr,"\nzcalloc - %s:%d", __FILE__, __LINE__);
+    void* ptr = zcalloc_static(size + MEMKIND_PREFIX_SIZE);
+    uint64_t *is_pmem = ptr;
+    *is_pmem = 0;
+    return (char*)ptr + MEMKIND_PREFIX_SIZE;
+}
+
+void *zrealloc_static(void *ptr, size_t size) {
+    fprintf(stderr,"\nzrealloc - %s:%d", __FILE__, __LINE__);
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
 #endif
@@ -179,6 +188,19 @@ void *zrealloc(void *ptr, size_t size) {
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
     return (char*)newptr+PREFIX_SIZE;
 #endif
+}
+
+void *zrealloc(void *ptr, size_t size) {
+    fprintf(stderr,"\nzcalloc - %s:%d", __FILE__, __LINE__);
+    void* new_ptr = NULL;
+    if (ptr) {
+        new_ptr = zrealloc_static(ptr - MEMKIND_PREFIX_SIZE, size + MEMKIND_PREFIX_SIZE);
+    } else {
+        new_ptr = zmalloc_static(size + MEMKIND_PREFIX_SIZE);
+    }
+    uint64_t *is_pmem = new_ptr;
+    *is_pmem = 0;
+    return (char*)new_ptr + MEMKIND_PREFIX_SIZE;
 }
 
 /* Provide zmalloc_size() for systems where this function is not provided by
@@ -218,12 +240,16 @@ static void zfree_pmem_info_wrapper(void *ptr) {
 
 void zfree (void* ptr)
 {
-    fprintf(stderr,"\nfree_pmem_info_wrapper");
+    if (!ptr) return;
+    fprintf(stderr,"\nzfree - %s:%d", __FILE__, __LINE__);
     uint64_t *is_pmem = (char*)ptr - MEMKIND_PREFIX_SIZE;
+    //kfilipek: if(*is_pmem) {
     if(*is_pmem) {
+        fprintf(stderr,"\ndeallocation from zfree as pmem");
         mysuper_free(is_pmem);
 //        m_alloc->free(is_pmem);
-    }else {
+    } else {
+        fprintf(stderr,"\ndeallocation from zfree as dram");
         zfree_pmem_info_wrapper(is_pmem);
     }
 }

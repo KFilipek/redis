@@ -1,3 +1,5 @@
+static struct memkind *ugly_static_solution;
+
 int jemk_get_defrag_hint(void* ptr, int *bin_util, int *run_util);
 int jemk_mallctl(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen);
 
